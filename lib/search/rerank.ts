@@ -13,7 +13,7 @@ export function canonicalizeUrl(raw: string): string {
     const u = new URL(raw)
     u.hash = ''
     u.hostname = u.hostname.toLowerCase().replace(/^www\./, '')
-    for (const key of [...u.searchParams.keys()]) {
+    for (const key of Array.from(u.searchParams.keys())) {
       if (TRACKING_PARAMS.test(key)) u.searchParams.delete(key)
     }
     let s = u.toString()

@@ -160,7 +160,7 @@ export async function runSearchAgent(
     )
     if (verdict.verdict === 'supported') claim.confidence = 'high'
     if (verdict.verdict === 'refuted') claim.statement = `[REFUTED] ${claim.statement}`
-    if (verdict.sources?.length) claim.sources = [...new Set([...claim.sources, ...verdict.sources])]
+    if (verdict.sources?.length) claim.sources = Array.from(new Set([...claim.sources, ...verdict.sources]))
   }
 
   // ── Synthesize the cited report ────────────────────────────────────────

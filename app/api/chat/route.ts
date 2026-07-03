@@ -70,16 +70,12 @@ export async function POST(req: NextRequest) {
           const lastIteration = iteration === MAX_ITERATIONS - 1;
           const response = await nim.chat.completions.create({
             model:           process.env.NVIDIA_NIM_MODEL!,
-            // gpt-oss is a reasoning model: keep effort low so the chain-of-
-            // thought doesn't eat the token budget and leave content empty,
-            // and give content ample room.
             max_tokens:      8192,
             reasoning_effort: "low",
             tools:           TOOL_DEFINITIONS as any,
-            // On the last allowed turn, forbid tools so the model must answer.
             tool_choice:     lastIteration ? "none" : "auto",
             messages:        currentMessages,
-          });
+          } as any);
 
           const choice = response.choices[0];
           const msg    = choice?.message;
@@ -166,7 +162,7 @@ export async function POST(req: NextRequest) {
             reasoning_effort: "low",
             tool_choice:      "none",
             messages:         currentMessages,
-          });
+          } as any);
           await streamText(final.choices[0]?.message?.content ?? "");
           send({ type: "sources", sources: citedSources });
           send({ type: "session", sessionId: sid });

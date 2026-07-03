@@ -25,7 +25,7 @@ const BY_NAME: Record<string, SearchProvider> = {
 function providerChain(): SearchProvider[] {
   const primary = (process.env.SEARCH_PROVIDER || 'duckduckgo').toLowerCase()
   const names = [primary, ...CANONICAL_ORDER.filter((n) => n !== primary)]
-  return [...new Set(names)].map((n) => BY_NAME[n]).filter(Boolean)
+  return Array.from(new Set(names)).map((n) => BY_NAME[n]).filter(Boolean)
 }
 
 export const webSearchProvider: SearchProvider = {
