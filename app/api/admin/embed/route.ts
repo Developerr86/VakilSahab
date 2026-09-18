@@ -22,6 +22,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ status: lr.status, embed: ids.filter((i) => /embed/i.test(i)), total: ids.length });
   }
 
+  if (new URL(req.url).searchParams.get("chatprobe") === "1") {
+    const b = process.env.NVIDIA_NIM_BASE_URL ?? "https://integrate.api.nvidia.com/v1";
+    const t0 = Date.now();
+    const cr = await fetch(`${b}/chat/completions`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${process.env.NVIDIA_NIM_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: process.env.NVIDIA_NIM_MODEL,
+        max_tokens: 200,
+        messages: [{ role: "user", content: "Say hello in one word." }],
+      }),
+    });
+    const j: any = await cr.json().catch(() => ({}));
+    return NextResponse.json({ status: cr.status, ms: Date.now() - t0, sample: JSON.stringify(j).slice(0, 300) });
+  }
+
   let body: any;
   try {
     body = await req.json();
