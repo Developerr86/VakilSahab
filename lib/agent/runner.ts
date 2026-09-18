@@ -125,7 +125,9 @@ async function callModelStreaming(opts: {
           const acc = byIndex[i];
           if (tc.id)                acc.id = tc.id;
           if (tc.type)              acc.type = tc.type;
-          if (tc.function?.name)    acc.function.name = tc.function.name;
+          // gpt-oss on NIM leaks harmony channel markers into streamed tool
+          // names ("search_constitution<|channel|>commentary") - strip them.
+          if (tc.function?.name)    acc.function.name = tc.function.name.split("<|")[0].trim();
           if (tc.function?.arguments) acc.function.arguments += tc.function.arguments;
         }
       }
@@ -158,7 +160,7 @@ async function callModelStreaming(opts: {
     const content: string = ch?.message?.content ?? "";
     const toolCalls = ((ch?.message?.tool_calls ?? []) as any[]).map((tc) => ({
       id: tc.id, type: tc.type ?? "function",
-      function: { name: tc.function?.name ?? "", arguments: tc.function?.arguments ?? "" },
+      function: { name: String(tc.function?.name ?? "").split("<|")[0].trim(), arguments: tc.function?.arguments ?? "" },
     }));
     if (content.trim() || toolCalls.length > 0) {
       if (content) await opts.onPartial(content);
