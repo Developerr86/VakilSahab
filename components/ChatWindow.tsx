@@ -11,11 +11,11 @@ interface Message {
 }
 
 const STAGE_LABELS: Record<string, string> = {
-  queued:              "â³ Queued...",
-  thinking:            "âï¸ Thinking...",
-  search_constitution: "ð Searching Constitution...",
-  search_web:          "ð Searching the web...",
-  writing:             "âï¸ Writing answer...",
+  queued:              "⏳ Queued...",
+  thinking:            "⚖️ Thinking...",
+  search_constitution: "🔍 Searching Constitution...",
+  search_web:          "🔍 Searching the web...",
+  writing:             "✍️ Writing answer...",
 };
 
 export default function ChatWindow({ messages }: { messages: Message[] }) {
@@ -31,7 +31,7 @@ export default function ChatWindow({ messages }: { messages: Message[] }) {
           >
             {msg.toolCall && (
               <p className="text-xs text-gray-400 mb-2 italic">
-                {STAGE_LABELS[msg.toolCall] ?? "âï¸ Working..."}
+                {STAGE_LABELS[msg.toolCall] ?? "⚙️ Working..."}
               </p>
             )}
             <ReactMarkdown remarkPlugins={[remarkGfm]}>
