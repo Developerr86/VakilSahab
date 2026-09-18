@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
           const lastIteration = iteration === MAX_ITERATIONS - 1;
           const response = await nim.chat.completions.create({
             model:           process.env.NVIDIA_NIM_MODEL!,
-            max_tokens:      8192,
+            max_tokens:      1024,
             reasoning_effort: "low",
             tools:           TOOL_DEFINITIONS as any,
             tool_choice:     lastIteration ? "none" : "auto",
@@ -158,7 +158,7 @@ export async function POST(req: NextRequest) {
         if (!answered) {
           const final = await nim.chat.completions.create({
             model:            process.env.NVIDIA_NIM_MODEL!,
-            max_tokens:       8192,
+            max_tokens:       1024,
             reasoning_effort: "low",
             tool_choice:      "none",
             messages:         currentMessages,
