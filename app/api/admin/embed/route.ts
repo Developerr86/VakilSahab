@@ -28,7 +28,13 @@ export async function POST(req: NextRequest) {
     const b = process.env.NVIDIA_NIM_BASE_URL ?? "https://integrate.api.nvidia.com/v1";
     const model = sp.get("model") ?? process.env.NVIDIA_NIM_MODEL ?? "deepseek-ai/deepseek-v4-flash-0731";
     const thinking = sp.get("thinking") !== "0";
-    const mt = Math.min(Number(sp.get("mt") ?? 32) || 32, 800);
+    const mt = Math.min(Number(sp.get("mt") ?? 32) || 32, 1024);
+    const legal = sp.get("q") === "legal";
+    const useTools = sp.get("tools") === "1";
+    const useStream = sp.get("stream") === "1";
+    const prompt = legal
+      ? "In one short paragraph, what does Article 21 of the Constitution of India guarantee?"
+      : "Say hello in one word.";
     const t0 = Date.now();
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 55000);
@@ -38,11 +44,56 @@ export async function POST(req: NextRequest) {
         max_tokens: mt,
         temperature: 0.3,
         top_p: 0.95,
-        messages: [{ role: "user", content: "Say hello in one word." }],
+        messages: [{ role: "user", content: prompt }],
       };
       if (/deepseek-v4/.test(model)) payload.extra_body = { chat_template_kwargs: { thinking } };
       const re = sp.get("re");
       if (re) payload.reasoning_effort = re;
+      if (useTools) {
+        payload.tools = [{ type: "function", function: { name: "search_constitution", description: "Search the Constitution of India", parameters: { type: "object", properties: { query: { type: "string" } }, required: ["query"] } } }];
+        payload.tool_choice = "auto";
+      }
+      if (useStream) {
+        payload.stream = true;
+        const cr = await fetch(`${b}/chat/completions`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${process.env.NVIDIA_NIM_API_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        });
+        clearTimeout(timer);
+        if (cr.status !== 200 || !cr.body) {
+          const txt = await cr.text();
+          return NextResponse.json({ status: cr.status, ms: Date.now() - t0, model, stream: true, raw: txt.slice(0, 240) });
+        }
+        const reader = cr.body.getReader();
+        const dec = new TextDecoder();
+        let buf = "", content = "", rc = "", finish = "", msFirst = 0;
+        const toolNames = new Set<string>();
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += dec.decode(value, { stream: true });
+          const lines = buf.split("\n");
+          buf = lines.pop() ?? "";
+          for (const line of lines) {
+            const l = line.trim();
+            if (!l.startsWith("data:")) continue;
+            const data = l.slice(5).trim();
+            if (data === "[DONE]") continue;
+            try {
+              const ch = JSON.parse(data)?.choices?.[0];
+              const d = ch?.delta;
+              if (d?.content) { if (!msFirst) msFirst = Date.now() - t0; content += d.content; }
+              if (d?.reasoning_content) { if (!msFirst) msFirst = Date.now() - t0; rc += d.reasoning_content; }
+              if (Array.isArray(d?.tool_calls)) for (const tc of d.tool_calls) { if (tc?.function?.name) toolNames.add(tc.function.name); }
+              if (ch?.finish_reason) finish = ch.finish_reason;
+            } catch {}
+          }
+        }
+        clearTimeout(timer);
+        return NextResponse.json({ status: 200, ms: Date.now() - t0, msFirst, model, re: sp.get("re"), stream: true, clen: content.length, rclen: rc.length, sample: content.slice(0, 200), rcsample: rc.slice(0, 120), tools: [...toolNames], finish });
+      }
       const cr = await fetch(`${b}/chat/completions`, {
         method: "POST",
         headers: { Authorization: `Bearer ${process.env.NVIDIA_NIM_API_KEY}`, "Content-Type": "application/json" },
@@ -55,8 +106,8 @@ export async function POST(req: NextRequest) {
       let sample = "", rc = "", finish = "";
       try {
         const ch = JSON.parse(txt)?.choices?.[0];
-        sample = String(ch?.message?.content ?? "").slice(0, 80);
-        rc = String(ch?.message?.reasoning_content ?? "").slice(0, 80);
+        sample = String(ch?.message?.content ?? "").slice(0, 200);
+        rc = String(ch?.message?.reasoning_content ?? "").slice(0, 120);
         finish = String(ch?.finish_reason ?? "");
       } catch {}
       return NextResponse.json({ status: cr.status, ms, model, thinking, mt, re: sp.get("re"), sample, rc, finish, raw: cr.status === 200 ? undefined : txt.slice(0, 240) });
