@@ -17,8 +17,8 @@ load_dotenv()
 
 NODES_PATH  = Path("parsed/nodes.json")
 BATCH_SIZE  = 50
-EMBED_MODEL = os.environ.get("NVIDIA_NIM_EMBED_MODEL", "nvidia/nv-embedqa-e5-v5")
-EMBED_DIM   = 1024
+EMBED_MODEL = os.environ.get("NVIDIA_NIM_EMBED_MODEL", "nvidia/nemotron-3-embed-1b")
+EMBED_DIM   = 2048
 MIN_CHARS   = 40
 
 # OpenAI SDK pointed at the NIM OpenAI-compatible endpoint.
