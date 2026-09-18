@@ -22,20 +22,41 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ status: lr.status, embed: ids.filter((i) => /embed/i.test(i)), total: ids.length });
   }
 
-  if (new URL(req.url).searchParams.get("chatprobe") === "1") {
+  const probe = new URL(req.url).searchParams.get("chatprobe");
+  if (probe) {
+    const sp = new URL(req.url).searchParams;
     const b = process.env.NVIDIA_NIM_BASE_URL ?? "https://integrate.api.nvidia.com/v1";
+    const model = sp.get("model") ?? process.env.NVIDIA_NIM_MODEL ?? "deepseek-ai/deepseek-v4-flash-0731";
+    const thinking = sp.get("thinking") !== "0";
+    const mt = Math.min(Number(sp.get("mt") ?? 32) || 32, 800);
     const t0 = Date.now();
-    const cr = await fetch(`${b}/chat/completions`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${process.env.NVIDIA_NIM_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: process.env.NVIDIA_NIM_MODEL,
-        max_tokens: 200,
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 55000);
+    try {
+      const payload: any = {
+        model,
+        max_tokens: mt,
+        temperature: 0.3,
+        top_p: 0.95,
         messages: [{ role: "user", content: "Say hello in one word." }],
-      }),
-    });
-    const j: any = await cr.json().catch(() => ({}));
-    return NextResponse.json({ status: cr.status, ms: Date.now() - t0, sample: JSON.stringify(j).slice(0, 300) });
+      };
+      if (/deepseek-v4/.test(model)) payload.extra_body = { chat_template_kwargs: { thinking } };
+      const cr = await fetch(`${b}/chat/completions`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${process.env.NVIDIA_NIM_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+      const ms = Date.now() - t0;
+      const txt = await cr.text();
+      let sample = "";
+      try { sample = String(JSON.parse(txt)?.choices?.[0]?.message?.content ?? "").slice(0, 80); } catch {}
+      return NextResponse.json({ status: cr.status, ms, model, thinking, mt, sample, raw: cr.status === 200 ? undefined : txt.slice(0, 240) });
+    } catch (e: any) {
+      clearTimeout(timer);
+      return NextResponse.json({ ms: Date.now() - t0, model, thinking, mt, error: e?.name === "AbortError" ? "aborted>55s" : String(e) });
+    }
   }
 
   let body: any;
