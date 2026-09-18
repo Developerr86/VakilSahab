@@ -12,6 +12,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
+  if (new URL(req.url).searchParams.get("list") === "1") {
+    const b = process.env.NVIDIA_NIM_BASE_URL ?? "https://integrate.api.nvidia.com/v1";
+    const lr = await fetch(`${b}/models`, {
+      headers: { Authorization: `Bearer ${process.env.NVIDIA_NIM_API_KEY}` },
+    });
+    const j: any = await lr.json().catch(() => ({}));
+    const ids = ((j.data ?? []) as any[]).map((m) => m.id);
+    return NextResponse.json({ status: lr.status, embed: ids.filter((i) => /embed/i.test(i)), total: ids.length });
+  }
+
   let body: any;
   try {
     body = await req.json();
