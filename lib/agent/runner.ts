@@ -81,7 +81,7 @@ async function callModelStreaming(opts: {
   toolChoice: "auto" | "none";
   deadline:   number;
   onPartial:  (text: string) => Promise<void>;
-}): Promise<{ content: string; toolCalls: any[]; finishReason: string; fallbackUsed: boolean }> {
+}): Promise<{ content: string; toolCalls: any[]; finishReason: string; fallbackUsed: boolean; diag?: string }> {
   // Only for models known to accept it; nemotron variants can return empty
   // content when given reasoning_effort. "low" keeps reasoning models
   // (deepseek, gpt-oss) inside the step budget.
@@ -98,6 +98,7 @@ async function callModelStreaming(opts: {
   const msLeft = Math.max(5_000, opts.deadline - Date.now());
   const timer = setTimeout(() => controller.abort(), msLeft);
   let finishReason = "";
+  let diag = "";
   try {
     const stream = await nim.chat.completions.create(
       { ...baseParams, stream: true },
@@ -108,6 +109,7 @@ async function callModelStreaming(opts: {
     const byIndex: Record<number, { id?: string; type?: string; function: { name?: string; arguments: string } }> = {};
 
     for await (const chunk of stream as any) {
+      diag = (diag + " | " + JSON.stringify(chunk).slice(0, 250)).slice(-700);
       const ch = chunk.choices?.[0];
       const delta = ch?.delta;
       if (ch?.finish_reason) finishReason = ch.finish_reason;
@@ -150,6 +152,7 @@ async function callModelStreaming(opts: {
       { ...baseParams, stream: false },
       { signal: controller2.signal } as any,
     );
+    diag = (diag + " || nostream: " + JSON.stringify(resp).slice(0, 500)).slice(-1200);
     const ch = resp?.choices?.[0];
     if (ch?.finish_reason) finishReason = ch.finish_reason;
     const content: string = ch?.message?.content ?? "";
@@ -164,7 +167,7 @@ async function callModelStreaming(opts: {
   } finally {
     clearTimeout(timer2);
   }
-  return { content: "", toolCalls: [], finishReason, fallbackUsed: true };
+  return { content: "", toolCalls: [], finishReason, fallbackUsed: true, diag };
 }
 
 // Run the job until it finishes or the step budget runs out.
@@ -250,7 +253,7 @@ export async function runJobStep(supabase: DB, job: JobRow): Promise<StepOutcome
       const lastIteration = iteration === MAX_ITERATIONS - 1;
       await save(supabase, job.id, { stage: "thinking", heartbeat: new Date().toISOString() });
 
-      const { content, toolCalls, finishReason } = await callModelStreaming({
+      const { content, toolCalls, finishReason, diag } = await callModelStreaming({
         messages:   state.messages,
         toolChoice: lastIteration ? "none" : "auto",
         deadline,
@@ -262,7 +265,7 @@ export async function runJobStep(supabase: DB, job: JobRow): Promise<StepOutcome
       // finishing with an empty message.
       if (toolCalls.length === 0) {
         if (!content.trim()) {
-          return await failOrRetry(`The model returned an empty response (finish=${finishReason || "unknown"}).`);
+          return await failOrRetry(`The model returned an empty response (finish=${finishReason || "unknown"}). diag=${(diag || "").slice(0, 900)}`);
         }
         return await finish(content);
       }
