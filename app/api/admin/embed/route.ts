@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
   }
 
   const base = process.env.NVIDIA_NIM_BASE_URL ?? "https://integrate.api.nvidia.com/v1";
-  const model = process.env.NVIDIA_NIM_EMBED_MODEL ?? "nvidia/nv-embedqa-e5-v5";
+  const model = new URL(req.url).searchParams.get("model") ?? process.env.NVIDIA_NIM_EMBED_MODEL ?? "nvidia/nv-embedqa-e5-v5";
   const texts = nodes.map((n: any) => `${n.heading}. ${n.content}`);
 
   const r = await fetch(`${base}/embeddings`, {
