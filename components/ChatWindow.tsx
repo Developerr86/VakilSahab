@@ -7,8 +7,16 @@ interface Message {
   role:     "user" | "assistant";
   content:  string;
   sources?: { full_ref?: string; url?: string; title?: string }[];
-  toolCall?: string; // tool name currently being called
+  toolCall?: string; // current stage of the running job
 }
+
+const STAGE_LABELS: Record<string, string> = {
+  queued:              "â³ Queued...",
+  thinking:            "âï¸ Thinking...",
+  search_constitution: "ð Searching Constitution...",
+  search_web:          "ð Searching the web...",
+  writing:             "âï¸ Writing answer...",
+};
 
 export default function ChatWindow({ messages }: { messages: Message[] }) {
   return (
@@ -23,7 +31,7 @@ export default function ChatWindow({ messages }: { messages: Message[] }) {
           >
             {msg.toolCall && (
               <p className="text-xs text-gray-400 mb-2 italic">
-                🔍 Searching {msg.toolCall === "search_constitution" ? "Constitution" : "web"}...
+                {STAGE_LABELS[msg.toolCall] ?? "âï¸ Working..."}
               </p>
             )}
             <ReactMarkdown remarkPlugins={[remarkGfm]}>
