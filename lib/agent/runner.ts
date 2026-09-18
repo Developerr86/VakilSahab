@@ -218,7 +218,7 @@ export async function runJobStep(supabase: DB, job: JobRow): Promise<StepOutcome
         onPartial:  (text) => beat({ stage: "writing", partial: text }),
       });
 
-      // Plain-text answer â done.
+      // Plain-text answer → done.
       if (toolCalls.length === 0) {
         return await finish(content);
       }
@@ -231,13 +231,13 @@ export async function runJobStep(supabase: DB, job: JobRow): Promise<StepOutcome
         const name: string = tc.function.name;
         await save(supabase, job.id, { stage: name, heartbeat: new Date().toISOString() });
 
-        // Suppress repeat searches: same tool + same args â don't re-run.
+        // Suppress repeat searches: same tool + same args → don't re-run.
         const cacheKey = `${name}:${tc.function.arguments}`;
         if (state.toolCache[cacheKey]) {
           state.messages.push({
             role:         "tool",
             tool_call_id: tc.id,
-            content:      "You already ran this exact search â the results are above. Do not repeat it; synthesize your answer from what you have.",
+            content:      "You already ran this exact search — the results are above. Do not repeat it; synthesize your answer from what you have.",
           } as any);
           continue;
         }
