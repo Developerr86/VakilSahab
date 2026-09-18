@@ -33,17 +33,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "nodes must be an array of 1..50" }, { status: 400 });
   }
 
-  const base = process.env.NVIDIA_NIM_BASE_URL ?? "https://integrate.api.nvidia.com/v1";
-  const model = new URL(req.url).searchParams.get("model") ?? process.env.NVIDIA_NIM_EMBED_MODEL ?? "nvidia/nv-embedqa-e5-v5";
+  const provider = new URL(req.url).searchParams.get("provider") ?? "nim";
+  const base = provider === "openai"
+    ? (process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1")
+    : (process.env.NVIDIA_NIM_BASE_URL ?? "https://integrate.api.nvidia.com/v1");
+  const apiKey = provider === "openai" ? process.env.OPENAI_API_KEY : process.env.NVIDIA_NIM_API_KEY;
+  const model = new URL(req.url).searchParams.get("model")
+    ?? (provider === "openai" ? "text-embedding-3-small" : (process.env.NVIDIA_NIM_EMBED_MODEL ?? "nvidia/nv-embedqa-e5-v5"));
   const texts = nodes.map((n: any) => `${n.heading}. ${n.content}`);
+  const payload: any = { model, input: texts };
+  if (provider !== "openai") { payload.input_type = "passage"; payload.truncate = "END"; }
 
   const r = await fetch(`${base}/embeddings`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${process.env.NVIDIA_NIM_API_KEY}`,
+      Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ model, input: texts, input_type: "passage", truncate: "END" }),
+    body: JSON.stringify(payload),
   });
   if (!r.ok) {
     const t = await r.text();
