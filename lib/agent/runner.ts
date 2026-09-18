@@ -87,9 +87,10 @@ async function callModelStreaming(opts: {
       {
         model:            process.env.NVIDIA_NIM_MODEL!,
         max_tokens:       MAX_TOKENS,
-        // DeepSeek-only: other NIM models (e.g. nemotron lightning) can return
-        // empty content when given reasoning_effort.
-        ...(/deepseek/i.test(process.env.NVIDIA_NIM_MODEL ?? "") ? { reasoning_effort: "low" } : {}),
+        // Only for models known to accept it; nemotron variants can return
+        // empty content when given reasoning_effort. "low" keeps reasoning
+        // models (deepseek, gpt-oss) inside the step budget.
+        ...(/deepseek|gpt-oss/i.test(process.env.NVIDIA_NIM_MODEL ?? "") ? { reasoning_effort: "low" } : {}),
         tools:            opts.toolChoice === "none" ? undefined : (TOOL_DEFINITIONS as any),
         tool_choice:      opts.toolChoice,
         messages:         opts.messages,
