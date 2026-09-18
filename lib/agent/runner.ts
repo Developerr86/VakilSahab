@@ -87,7 +87,9 @@ async function callModelStreaming(opts: {
       {
         model:            process.env.NVIDIA_NIM_MODEL!,
         max_tokens:       MAX_TOKENS,
-        reasoning_effort: "low",
+        // DeepSeek-only: other NIM models (e.g. nemotron lightning) can return
+        // empty content when given reasoning_effort.
+        ...(/deepseek/i.test(process.env.NVIDIA_NIM_MODEL ?? "") ? { reasoning_effort: "low" } : {}),
         tools:            opts.toolChoice === "none" ? undefined : (TOOL_DEFINITIONS as any),
         tool_choice:      opts.toolChoice,
         messages:         opts.messages,
@@ -204,6 +206,7 @@ export async function runJobStep(supabase: DB, job: JobRow): Promise<StepOutcome
         deadline,
         onPartial:  (text) => beat({ stage: "writing", partial: text }),
       });
+      if (!content.trim()) return await failOrRetry("The model returned an empty response.");
       return await finish(content);
     }
 
@@ -218,8 +221,13 @@ export async function runJobStep(supabase: DB, job: JobRow): Promise<StepOutcome
         onPartial:  (text) => beat({ stage: "writing", partial: text }),
       });
 
-      // Plain-text answer → done.
+      // Plain-text answer → done. An empty answer with no tool calls is a
+      // bad completion: retry through the normal attempts budget instead of
+      // finishing with an empty message.
       if (toolCalls.length === 0) {
+        if (!content.trim()) {
+          return await failOrRetry("The model returned an empty response.");
+        }
         return await finish(content);
       }
 
@@ -297,6 +305,7 @@ export async function runJobStep(supabase: DB, job: JobRow): Promise<StepOutcome
       deadline,
       onPartial:  (text) => beat({ stage: "writing", partial: text }),
     });
+    if (!content.trim()) return await failOrRetry("The model returned an empty response.");
     return await finish(content);
   } catch (e: any) {
     // Our own budget abort (or simply out of time): persist and resume later.
