@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
     });
     const j: any = await lr.json().catch(() => ({}));
     const ids = ((j.data ?? []) as any[]).map((m) => m.id);
-    return NextResponse.json({ status: lr.status, embed: ids.filter((i) => /embed/i.test(i)), total: ids.length });
+    return NextResponse.json({ status: lr.status, ids, embed: ids.filter((i) => /embed/i.test(i)), total: ids.length });
   }
 
   const probe = new URL(req.url).searchParams.get("chatprobe");
