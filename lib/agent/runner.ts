@@ -71,31 +71,36 @@ export function initJobState(baseMessages: { role: string; content: string }[]):
   return freshState(baseMessages);
 }
 
-// One streaming chat completion with a hard abort at `deadline`.
-// Accumulates final text and streamed tool calls; reports throttled partials.
+// One chat completion inside the step budget. Streams first; gpt-oss on NIM
+// intermittently returns an empty STREAM (200, zero deltas) for some prompts,
+// while the same non-stream request answers fine - so an empty stream falls
+// back to one non-stream attempt with the remaining budget. finish_reason is
+// captured for diagnostics either way.
 async function callModelStreaming(opts: {
   messages:   OpenAI.Chat.ChatCompletionMessageParam[];
   toolChoice: "auto" | "none";
   deadline:   number;
   onPartial:  (text: string) => Promise<void>;
-}): Promise<{ content: string; toolCalls: any[] }> {
+}): Promise<{ content: string; toolCalls: any[]; finishReason: string; fallbackUsed: boolean }> {
+  // Only for models known to accept it; nemotron variants can return empty
+  // content when given reasoning_effort. "low" keeps reasoning models
+  // (deepseek, gpt-oss) inside the step budget.
+  const baseParams: any = {
+    model:            process.env.NVIDIA_NIM_MODEL!,
+    max_tokens:       MAX_TOKENS,
+    ...(/deepseek|gpt-oss/i.test(process.env.NVIDIA_NIM_MODEL ?? "") ? { reasoning_effort: "low" } : {}),
+    tools:            opts.toolChoice === "none" ? undefined : (TOOL_DEFINITIONS as any),
+    tool_choice:      opts.toolChoice,
+    messages:         opts.messages,
+  };
+
   const controller = new AbortController();
   const msLeft = Math.max(5_000, opts.deadline - Date.now());
   const timer = setTimeout(() => controller.abort(), msLeft);
+  let finishReason = "";
   try {
     const stream = await nim.chat.completions.create(
-      {
-        model:            process.env.NVIDIA_NIM_MODEL!,
-        max_tokens:       MAX_TOKENS,
-        // Only for models known to accept it; nemotron variants can return
-        // empty content when given reasoning_effort. "low" keeps reasoning
-        // models (deepseek, gpt-oss) inside the step budget.
-        ...(/deepseek|gpt-oss/i.test(process.env.NVIDIA_NIM_MODEL ?? "") ? { reasoning_effort: "low" } : {}),
-        tools:            opts.toolChoice === "none" ? undefined : (TOOL_DEFINITIONS as any),
-        tool_choice:      opts.toolChoice,
-        messages:         opts.messages,
-        stream:           true,
-      } as any,
+      { ...baseParams, stream: true },
       { signal: controller.signal } as any,
     );
 
@@ -103,7 +108,9 @@ async function callModelStreaming(opts: {
     const byIndex: Record<number, { id?: string; type?: string; function: { name?: string; arguments: string } }> = {};
 
     for await (const chunk of stream as any) {
-      const delta = chunk.choices?.[0]?.delta;
+      const ch = chunk.choices?.[0];
+      const delta = ch?.delta;
+      if (ch?.finish_reason) finishReason = ch.finish_reason;
       if (!delta) continue;
       if (delta.content) {
         content += delta.content;
@@ -126,10 +133,38 @@ async function callModelStreaming(opts: {
       .map(Number)
       .sort((a, b) => a - b)
       .map((i) => ({ type: "function", ...byIndex[i] }));
-    return { content, toolCalls };
+
+    if (content.trim() || toolCalls.length > 0) {
+      return { content, toolCalls, finishReason, fallbackUsed: false };
+    }
   } finally {
     clearTimeout(timer);
   }
+
+  // Empty stream: one non-stream fallback with whatever budget remains.
+  const msLeft2 = Math.max(3_000, opts.deadline - Date.now());
+  const controller2 = new AbortController();
+  const timer2 = setTimeout(() => controller2.abort(), msLeft2);
+  try {
+    const resp: any = await nim.chat.completions.create(
+      { ...baseParams, stream: false },
+      { signal: controller2.signal } as any,
+    );
+    const ch = resp?.choices?.[0];
+    if (ch?.finish_reason) finishReason = ch.finish_reason;
+    const content: string = ch?.message?.content ?? "";
+    const toolCalls = ((ch?.message?.tool_calls ?? []) as any[]).map((tc) => ({
+      id: tc.id, type: tc.type ?? "function",
+      function: { name: tc.function?.name ?? "", arguments: tc.function?.arguments ?? "" },
+    }));
+    if (content.trim() || toolCalls.length > 0) {
+      if (content) await opts.onPartial(content);
+      return { content, toolCalls, finishReason, fallbackUsed: true };
+    }
+  } finally {
+    clearTimeout(timer2);
+  }
+  return { content: "", toolCalls: [], finishReason, fallbackUsed: true };
 }
 
 // Run the job until it finishes or the step budget runs out.
@@ -201,13 +236,13 @@ export async function runJobStep(supabase: DB, job: JobRow): Promise<StepOutcome
   try {
     // Forced-answer pass requested by an earlier step.
     if (state.forceFinal) {
-      const { content } = await callModelStreaming({
+      const { content, finishReason } = await callModelStreaming({
         messages:   state.messages,
         toolChoice: "none",
         deadline,
         onPartial:  (text) => beat({ stage: "writing", partial: text }),
       });
-      if (!content.trim()) return await failOrRetry("The model returned an empty response.");
+      if (!content.trim()) return await failOrRetry(`The model returned an empty response (finish=${finishReason || "unknown"}).`);
       return await finish(content);
     }
 
@@ -215,7 +250,7 @@ export async function runJobStep(supabase: DB, job: JobRow): Promise<StepOutcome
       const lastIteration = iteration === MAX_ITERATIONS - 1;
       await save(supabase, job.id, { stage: "thinking", heartbeat: new Date().toISOString() });
 
-      const { content, toolCalls } = await callModelStreaming({
+      const { content, toolCalls, finishReason } = await callModelStreaming({
         messages:   state.messages,
         toolChoice: lastIteration ? "none" : "auto",
         deadline,
@@ -227,7 +262,7 @@ export async function runJobStep(supabase: DB, job: JobRow): Promise<StepOutcome
       // finishing with an empty message.
       if (toolCalls.length === 0) {
         if (!content.trim()) {
-          return await failOrRetry("The model returned an empty response.");
+          return await failOrRetry(`The model returned an empty response (finish=${finishReason || "unknown"}).`);
         }
         return await finish(content);
       }
@@ -300,13 +335,13 @@ export async function runJobStep(supabase: DB, job: JobRow): Promise<StepOutcome
       return await pause("writing");
     }
     await save(supabase, job.id, { stage: "writing", heartbeat: new Date().toISOString() });
-    const { content } = await callModelStreaming({
+    const { content, finishReason } = await callModelStreaming({
       messages:   state.messages,
       toolChoice: "none",
       deadline,
       onPartial:  (text) => beat({ stage: "writing", partial: text }),
     });
-    if (!content.trim()) return await failOrRetry("The model returned an empty response.");
+    if (!content.trim()) return await failOrRetry(`The model returned an empty response (finish=${finishReason || "unknown"}).`);
     return await finish(content);
   } catch (e: any) {
     // Our own budget abort (or simply out of time): persist and resume later.
