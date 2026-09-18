@@ -12,7 +12,7 @@ interface Message {
 
 const WELCOME: Message = {
   role:    "assistant",
-  content: "**à¤¨à¤®à¤¸à¥à¤¤à¥à¥¤ à¤®à¥à¤ VakilSahab à¤¹à¥à¤à¥¤**\n\nDescribe your client's case â the facts, the parties involved, and the relief you're seeking. I'll research relevant case precedents and constitutional provisions, then give you my legal assessment.\n\nOnce we've worked through the research, you can ask me to draft a legal notice.",
+  content: "**नमस्ते। मैं VakilSahab हूँ।**\n\nDescribe your client's case — the facts, the parties involved, and the relief you're seeking. I'll research relevant case precedents and constitutional provisions, then give you my legal assessment.\n\nOnce we've worked through the research, you can ask me to draft a legal notice.",
 };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -60,7 +60,7 @@ export default function Home() {
 
       // Poll the job. Each poll both drives the work (?work=1) and waits up to
       // 25s for progress, so the UI updates live while the agent thinks,
-      // searches, and writes â with no single request exceeding Vercel's
+      // searches, and writes — with no single request exceeding Vercel's
       // 60-second function limit.
       for (;;) {
         let snap: any;
@@ -69,7 +69,7 @@ export default function Home() {
           if (!r.ok) { await sleep(2500); continue; }
           snap = await r.json();
         } catch {
-          // Poll request died (e.g. function recycled) â the job survives
+          // Poll request died (e.g. function recycled) — the job survives
           // server-side; wait and poll again.
           await sleep(2500);
           continue;
@@ -85,7 +85,7 @@ export default function Home() {
         }
         if (snap.status === "failed") {
           updateAssistant({
-            content:  `Sorry â that request didn't complete (${snap.error ?? "unknown error"}). Please send it again to retry.`,
+            content:  `Sorry — that request didn't complete (${snap.error ?? "unknown error"}). Please send it again to retry.`,
             toolCall: undefined,
           });
           break;
@@ -107,7 +107,7 @@ export default function Home() {
       {/* Header */}
       <header className="bg-white border-b border-gray-100 px-6 py-4 sticky top-0 z-10">
         <div className="max-w-3xl mx-auto flex items-center gap-3">
-          <span className="text-xl">âï¸</span>
+          <span className="text-xl">⚖️</span>
           <div>
             <h1 className="font-semibold text-gray-900">VakilSahab</h1>
             <p className="text-xs text-gray-400">Indian Civil Law Research Assistant</p>
