@@ -23,6 +23,6 @@ Re-run quarterly or when a Constitutional Amendment is notified.
 Upsert is idempotent — safe to re-run without duplicating rows.
 
 Required .env variables:
-- OPENAI_API_KEY
+- NVIDIA_NIM_API_KEY (and optionally NVIDIA_NIM_BASE_URL; embeds with nvidia/nemotron-3-embed-1b, 2048-dim)
 - SUPABASE_URL
 - SUPABASE_SERVICE_ROLE_KEY
