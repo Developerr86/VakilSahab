@@ -7,6 +7,8 @@ export const maxDuration = 60;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+const NOCACHE = { "Cache-Control": "no-store, no-cache, must-revalidate", "CDN-Cache-Control": "no-store", "Vercel-CDN-Cache-Control": "no-store" } as const;
+
 function snapshot(job: JobRow) {
   return {
     id:       job.id,
@@ -38,7 +40,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   const supabase = createClient();
   const { data: loaded } = await supabase
     .from("chat_jobs").select("*").eq("id", jobId).single();
-  if (!loaded) return Response.json({ error: "not found" }, { status: 404 });
+  if (!loaded) return Response.json({ error: "not found" }, { status: 404, headers: NOCACHE });
   let job = loaded as JobRow;
 
   if (work && (job.status === "pending" || job.status === "running")) {
@@ -62,5 +64,5 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
     if (fresh) job = { ...job, ...(fresh as any) };
   }
 
-  return Response.json(snapshot(job));
+  return Response.json(snapshot(job), { headers: NOCACHE });
 }
