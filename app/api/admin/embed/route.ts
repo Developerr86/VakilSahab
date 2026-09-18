@@ -41,6 +41,8 @@ export async function POST(req: NextRequest) {
         messages: [{ role: "user", content: "Say hello in one word." }],
       };
       if (/deepseek-v4/.test(model)) payload.extra_body = { chat_template_kwargs: { thinking } };
+      const re = sp.get("re");
+      if (re) payload.reasoning_effort = re;
       const cr = await fetch(`${b}/chat/completions`, {
         method: "POST",
         headers: { Authorization: `Bearer ${process.env.NVIDIA_NIM_API_KEY}`, "Content-Type": "application/json" },
@@ -50,9 +52,14 @@ export async function POST(req: NextRequest) {
       clearTimeout(timer);
       const ms = Date.now() - t0;
       const txt = await cr.text();
-      let sample = "";
-      try { sample = String(JSON.parse(txt)?.choices?.[0]?.message?.content ?? "").slice(0, 80); } catch {}
-      return NextResponse.json({ status: cr.status, ms, model, thinking, mt, sample, raw: cr.status === 200 ? undefined : txt.slice(0, 240) });
+      let sample = "", rc = "", finish = "";
+      try {
+        const ch = JSON.parse(txt)?.choices?.[0];
+        sample = String(ch?.message?.content ?? "").slice(0, 80);
+        rc = String(ch?.message?.reasoning_content ?? "").slice(0, 80);
+        finish = String(ch?.finish_reason ?? "");
+      } catch {}
+      return NextResponse.json({ status: cr.status, ms, model, thinking, mt, re: sp.get("re"), sample, rc, finish, raw: cr.status === 200 ? undefined : txt.slice(0, 240) });
     } catch (e: any) {
       clearTimeout(timer);
       return NextResponse.json({ ms: Date.now() - t0, model, thinking, mt, error: e?.name === "AbortError" ? "aborted>55s" : String(e) });
