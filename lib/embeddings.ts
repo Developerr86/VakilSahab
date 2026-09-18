@@ -8,7 +8,7 @@ const embeddingClient = new OpenAI({
   baseURL: process.env.NVIDIA_NIM_BASE_URL,
 });
 
-const EMBED_MODEL = process.env.NVIDIA_NIM_EMBED_MODEL ?? "nvidia/nv-embedqa-e5-v5";
+const EMBED_MODEL = process.env.NVIDIA_NIM_EMBED_MODEL ?? "nvidia/nemotron-3-embed-1b";
 
 export async function embed(text: string): Promise<number[]> {
   const res = await embeddingClient.embeddings.create({
